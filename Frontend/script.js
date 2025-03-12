@@ -1,109 +1,137 @@
-const express = require('express');
-const oracledb = require('oracledb');
-const cors = require('cors');
-const bodyParser = require('body-parser');
+const API_URL = 'http://localhost:5000';
 
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
 
-const dbConfig = {
-    user: "system",
-    password: "tiger",
-    connectString: "localhost/xe" // Use your service name
-};
+async function addStation(event) {
+    event.preventDefault();
 
-// Function to handle database queries
-async function runQuery(query, binds = []) {
-    let connection;
+    const stationName = document.getElementById('stationName').value;
+    const location = document.getElementById('location').value;
+    const capacity = document.getElementById('capacity').value;
+    const status = document.getElementById('stationStatus').value;
+
     try {
-        connection = await oracledb.getConnection(dbConfig);
-        const result = await connection.execute(query, binds, { autoCommit: true });
-        return result;
-    } catch (err) {
-        console.error('Database error:', err);
-        throw err;
-    } finally {
-        if (connection) {
-            try {
-                await connection.close();
-            } catch (err) {
-                console.error('Error closing connection:', err);
-            }
+        const response = await fetch(`${API_URL}/add-station`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                stationName,
+                location,
+                capacity,
+                status
+            })
+        });
+
+        const data = await response.json();
+        alert(data.message);
+        fetchStations(); 
+    } catch (error) {
+        console.error('Error adding station:', error);
+    }
+}
+
+
+async function fetchStations() {
+    try {
+        const response = await fetch(`${API_URL}/stations`);
+        const stations = await response.json();
+
+        const stationList = document.getElementById('stationList');
+        stationList.innerHTML = '';
+
+        stations.forEach(station => {
+            const row = `<tr>
+                <td>${station[0]}</td>
+                <td>${station[1]}</td>
+                <td>${station[2]}</td>
+                <td>${station[3]}</td>
+                <td>${station[4]}</td>
+                <td>
+                    <button class="btn btn-warning" onclick="editStation(${station[0]}, '${station[1]}', '${station[2]}', ${station[3]}, '${station[4]}')">Edit</button>
+                    <button class="btn btn-danger" onclick="deleteStation(${station[0]})">Delete</button>
+                </td>
+            </tr>`;
+            stationList.innerHTML += row;
+        });
+    } catch (error) {
+        console.error('Error fetching stations:', error);
+    }
+}
+
+
+async function editStation(id, name, location, capacity, status) {
+    document.getElementById('stationId').value = id;
+    document.getElementById('stationName').value = name;
+    document.getElementById('location').value = location;
+    document.getElementById('capacity').value = capacity;
+    document.getElementById('stationStatus').value = status;
+
+    document.getElementById('submitButton').innerText = 'Update Station';
+
+    document.getElementById('submitButton').onclick = async (e) => {
+        e.preventDefault();
+
+        const updatedName = document.getElementById('stationName').value;
+        const updatedLocation = document.getElementById('location').value;
+        const updatedCapacity = document.getElementById('capacity').value;
+        const updatedStatus = document.getElementById('stationStatus').value;
+
+        try {
+            const response = await fetch(`${API_URL}/update-station/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    stationName: updatedName,
+                    location: updatedLocation,
+                    capacity: updatedCapacity,
+                    status: updatedStatus
+                })
+            });
+
+            const data = await response.json();
+            alert(data.message);
+            fetchStations(); 
+            resetForm();
+        } catch (error) {
+            console.error('Error updating station:', error);
+        }
+    };
+}
+
+
+async function deleteStation(id) {
+    if (confirm('Are you sure you want to delete this station?')) {
+        try {
+            const response = await fetch(`${API_URL}/delete-station/${id}`, {
+                method: 'DELETE',
+            });
+
+            const data = await response.json();
+            alert(data.message);
+            fetchStations(); 
+        } catch (error) {
+            console.error('Error deleting station:', error);
         }
     }
 }
-//CREATE
-app.post('/add_reservation', async (req, res) => {
-    const { stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime } = req.body;
 
-    const query = `
-        INSERT INTO reservations (station_name, location, slot_number, capacity, customer_name, vehicle_type, contact, reservation_time)
-        VALUES (:1, :2, :3, :4, :5, :6, :7, TO_DATE(:8, 'YYYY-MM-DD HH24:MI:SS'))
-    `;
 
-    try {
-        await runQuery(query, [stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime]);
-        res.status(201).json({ message: 'Reservation added successfully!' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+function resetForm() {
+    document.getElementById('stationId').value = '';
+    document.getElementById('stationName').value = '';
+    document.getElementById('location').value = '';
+    document.getElementById('capacity').value = '';
+    document.getElementById('stationStatus').value = '';
+    document.getElementById('submitButton').innerText = 'Submit';
 
-// ===============================
-// 🚀 READ (Get All Reservations)
-// ===============================
-app.get('/get_reservations', async (req, res) => {
-    const query = `SELECT * FROM reservations`;
+    document.getElementById('submitButton').onclick = addStation;
+}
 
-    try {
-        const result = await runQuery(query);
-        res.status(200).json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
-// ===============================
-// 🚀 UPDATE
-// ===============================
-app.put('/update_reservation/:id', async (req, res) => {
-    const id = req.params.id;
-    const { stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime } = req.body;
+document.getElementById('submitButton').addEventListener('click', addStation);
 
-    const query = `
-        UPDATE reservations
-        SET station_name = :1, location = :2, slot_number = :3, capacity = :4,
-            customer_name = :5, vehicle_type = :6, contact = :7, reservation_time = TO_DATE(:8, 'YYYY-MM-DD HH24:MI:SS')
-        WHERE reservation_id = :9
-    `;
 
-    try {
-        await runQuery(query, [stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime, id]);
-        res.status(200).json({ message: 'Reservation updated successfully!' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ===============================
-// 🚀 DELETE
-// ===============================
-app.delete('/delete_reservation/:id', async (req, res) => {
-    const id = req.params.id;
-    const query = `DELETE FROM reservations WHERE reservation_id = :1`;
-
-    try {
-        await runQuery(query, [id]);
-        res.status(200).json({ message: 'Reservation deleted successfully!' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ===============================
-// 🚀 Start the Server
-// ===============================
-app.listen(5000, () => {
-    console.log('Server running on port 5000');
-});
+document.addEventListener('DOMContentLoaded', fetchStations);
