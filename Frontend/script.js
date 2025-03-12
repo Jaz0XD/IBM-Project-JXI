@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql');
+const oracledb = require('oracledb');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 
@@ -7,42 +7,51 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// MySQL Connection
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root', // Change if necessary
-    password: '', // Change if necessary
-    database: 'ev_charging'
-});
 
-db.connect(err => {
-    if (err) {
-        console.error('Database connection failed:', err);
-    } else {
-        console.log('Connected to MySQL Database');
+const dbConfig = {
+    user: "system", 
+    password: "tiger", 
+    connectString: "localhost/xe" 
+};
+
+
+async function runQuery(query, binds = []) {
+    let connection;
+    try {
+        connection = await oracledb.getConnection(dbConfig);
+        const result = await connection.execute(query, binds, { autoCommit: true });
+        return result;
+    } catch (err) {
+        console.error('Database error:', err);
+        throw err;
+    } finally {
+        if (connection) {
+            try {
+                await connection.close();
+            } catch (err) {
+                console.error('Error closing connection:', err);
+            }
+        }
     }
-});
+}
 
-// API Route to store form data
-app.post('/submit', (req, res) => {
+app.post('/submit', async (req, res) => {
     const { stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime } = req.body;
 
     const query = `
         INSERT INTO reservations (station_name, location, slot_number, capacity, customer_name, vehicle_type, contact, reservation_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (:1, :2, :3, :4, :5, :6, :7, TO_DATE(:8, 'YYYY-MM-DD HH24:MI:SS'))
     `;
 
-    db.query(query, [stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime], (err, result) => {
-        if (err) {
-            console.error('Error inserting data:', err);
-            res.status(500).send('Database Error');
-        } else {
-            res.send({ message: 'Data stored successfully!' });
-        }
-    });
+    try {
+        await runQuery(query, [stationName, location, slotNumber, capacity, customerName, vehicleType, contact, reservationTime]);
+        res.send({ message: 'Data stored successfully!' });
+    } catch (err) {
+        res.status(500).send('Database Error');
+    }
 });
 
-// Start the server
+
 app.listen(5000, () => {
     console.log('Server running on port 5000');
 });
